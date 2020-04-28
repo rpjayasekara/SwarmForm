@@ -1,5 +1,8 @@
 from swarmform.core.swarm_dag import Node, DAG
 from random import randrange
+from swarmform import ParallelTask, SwarmPad
+from swarmform.core.swarmwork import SwarmFlow
+
 
 def get_tasks_at_level(workflow, level):
 
@@ -171,6 +174,9 @@ def assign_parent_to_clusters(task):
     # Level of the nodes
     c_level = longest_parent.get_level()
     max_run_time = 0
+    for tsk_parent in task.get_parents():
+        if c_level != tsk_parent.get_level():
+            return cls
     # Check the longest parent is clustered or not. If it is not clustered set the maximum runtime
     if not longest_parent.get_is_assigned():
         c += 1
@@ -184,6 +190,7 @@ def assign_parent_to_clusters(task):
         par_list = sort_tasks_by_exec_time(par_list)
         c += 1
         cluster_c = []
+        s_id = []
         # keep the information of the cluster
         cls_info = {}
         # iterate all the unassigned tasks to cluster
@@ -191,9 +198,18 @@ def assign_parent_to_clusters(task):
             task = par_list.pop()
             # Check the sum of execution time current cluster and current node is less than or
             # equal to the maximum run time. # If it gets true assign the current task to the cluster
-            if (get_sum_0f_exec_time(cluster_c) + task.get_exec_time() <= max_run_time) and len(cluster_c) < 2:
+            if (get_sum_0f_exec_time(cluster_c) + task.get_exec_time() <= max_run_time) :
                 cluster_c.append(task)
+                if len(task.get_fw_ids_to_cluster_sequentially()) > 0:
+                    for id in task.get_fw_ids_to_cluster_sequentially():
+                        if not id in s_id:
+                            s_id.append(id)
+                else:
+                    if not task.get_fw_id() in s_id:
+                        s_id.append(task.get_fw_id())
+                # print(cls_info)
                 cls_info[task.get_fw_id()] = {'exec_time': task.get_exec_time(), 'cores': task.get_num_cores()}
+                # print(cls_info)
                 # Mark the task as assigned
                 task.isAssigned = True
             else:
@@ -206,25 +222,28 @@ def assign_parent_to_clusters(task):
                     # maximum number of cores as the cluster required cores.
                     core_space = 0
                     sequential_ids = []
-                    first_cluster_node = cluster_c[0]
-                    second_cluster_node = cluster_c[1]
-                    # Set the task which has maximum number of nodes to the begging of the sequential list
-                    if first_cluster_node.get_num_cores() >= second_cluster_node.get_num_cores():
-                        core_space = first_cluster_node.get_num_cores()-second_cluster_node.get_num_cores()
-                        sequential_ids = [first_cluster_node.get_fw_id(), second_cluster_node.get_fw_id()]
-                    elif first_cluster_node.get_num_cores() < second_cluster_node.get_num_cores():
-                        core_space = second_cluster_node.get_num_cores() - first_cluster_node.get_num_cores()
-                        sequential_ids = [second_cluster_node.get_fw_id(), first_cluster_node.get_fw_id()]
+                    print(s_id)
+                    # first_cluster_node = cluster_c[0]
+                    # second_cluster_node = cluster_c[1]
+                    # # Set the task which has maximum number of nodes to the begging of the sequential list
+                    # if first_cluster_node.get_num_cores() >= second_cluster_node.get_num_cores():
+                    #     core_space = first_cluster_node.get_num_cores()-second_cluster_node.get_num_cores()
+                    #     sequential_ids = [first_cluster_node.get_fw_id(), second_cluster_node.get_fw_id()]
+                    # elif first_cluster_node.get_num_cores() < second_cluster_node.get_num_cores():
+                    #     core_space = second_cluster_node.get_num_cores() - first_cluster_node.get_num_cores()
+                    #     sequential_ids = [second_cluster_node.get_fw_id(), first_cluster_node.get_fw_id()]
+                    for i in cluster_c:
+                        sequential_ids.append(i.get_fw_id())
 
                     cluster = Node(fw_id=sequential_ids[0], level=c_level,
                                    fw_info={'exec_time': get_sum_0f_exec_time(cluster_c),
                                             'cores': cls_info[sequential_ids[0]]['cores']},
                                    parents=[], children=[], assigned=True)
                     cluster.set_cluster_info(cls_info)
-                    cluster.set_sequential_ids(sequential_ids)
+                    cluster.set_sequential_ids(s_id)
                     # Set the information about the cluster space available in the cluster to fit other nodes
                     # to reduce the resource utilization.
-                    cluster.set_cluster_space([cls_info[cluster.get_fw_ids_to_cluster_sequentially()[1]]['exec_time'], core_space])
+                    # cluster.set_cluster_space([cls_info[cluster.get_fw_ids_to_cluster_sequentially()[1]]['exec_time'], core_space])
                     # Add the children to new clustered node
                     for tsk in cluster_c:
                         children = tsk.get_children()
@@ -262,6 +281,7 @@ def assign_parent_to_clusters(task):
                     cls.append(cluster)
                     # Sets a new cluster
                     cluster_c = []
+                    s_id = []
                     cls_info = {}
                     c += 1
                     cluster_c.append(task)
@@ -272,26 +292,29 @@ def assign_parent_to_clusters(task):
                 if (len(cls_info)) > 1:
                     core_space = 0
                     sequential_ids = []
-                    first_cluster_node = cluster_c[0]
-                    second_cluster_node = cluster_c[1]
-                    # Set the task which has maximum number of nodes to the begging of the sequential list
-                    if first_cluster_node.get_num_cores() >= second_cluster_node.get_num_cores():
-                        core_space = first_cluster_node.get_num_cores() - second_cluster_node.get_num_cores()
-                        sequential_ids = [first_cluster_node.get_fw_id(), second_cluster_node.get_fw_id()]
-                    elif first_cluster_node.get_num_cores() < second_cluster_node.get_num_cores():
-                        core_space = second_cluster_node.get_num_cores() - first_cluster_node.get_num_cores()
-                        sequential_ids = [second_cluster_node.get_fw_id(), first_cluster_node.get_fw_id()]
+                    # first_cluster_node = cluster_c[0]
+                    # second_cluster_node = cluster_c[1]
+                    # # Set the task which has maximum number of nodes to the begging of the sequential list
+                    # if first_cluster_node.get_num_cores() >= second_cluster_node.get_num_cores():
+                    #     core_space = first_cluster_node.get_num_cores() - second_cluster_node.get_num_cores()
+                    #     sequential_ids = [first_cluster_node.get_fw_id(), second_cluster_node.get_fw_id()]
+                    # elif first_cluster_node.get_num_cores() < second_cluster_node.get_num_cores():
+                    #     core_space = second_cluster_node.get_num_cores() - first_cluster_node.get_num_cores()
+                    #     sequential_ids = [second_cluster_node.get_fw_id(), first_cluster_node.get_fw_id()]
+                    print(s_id)
+                    for i in cluster_c:
+                        sequential_ids.append(i.get_fw_id())
 
                     cluster = Node(fw_id=sequential_ids[0], level=c_level,
                                    fw_info={'exec_time': get_sum_0f_exec_time(cluster_c),
                                             'cores': cls_info[sequential_ids[0]]['cores']},
                                    parents=[], children=[], assigned=True)
                     cluster.set_cluster_info(cls_info)
-                    cluster.set_sequential_ids(sequential_ids)
+                    cluster.set_sequential_ids(s_id)
                     # Set the information about the cluster space available in the cluster to fit other nodes to
                     # reduce the resource utilization.
-                    cluster.set_cluster_space(
-                        [cls_info[cluster.get_fw_ids_to_cluster_sequentially()[1]]['exec_time'], core_space])
+                    # cluster.set_cluster_space(
+                    #     [cls_info[cluster.get_fw_ids_to_cluster_sequentially()[1]]['exec_time'], core_space])
                     # Add the children to new clustered node
                     for tsk in cluster_c:
                         children = tsk.get_children()
@@ -421,9 +444,61 @@ def wpa_clustering(workflow):
             for cl in cls:
                 cls_at_level.append(cl)
         # Resource balance
-        resource_balance(cls_at_level, tasks_at_level_sorted, workflow)
+        # resource_balance(cls_at_level, tasks_at_level_sorted, workflow)
     workflow.update_links()
     return workflow
 
+sf = SwarmPad().get_sf_by_id(1)
+sf_dag = DAG(sf)
 
+def cluster_vertically(workflow):
+    for level in range(1,workflow.get_height()):
+        tsk_at_level = get_tasks_at_level(workflow, level)
+        for task in tsk_at_level:
+            m_task = task
+            cluster_c = []
+            cluster_c.append(task)
+            cls_info = {}
+            cls_info[task.get_fw_id()] = {'exec_time': task.get_exec_time(), 'cores': task.get_num_cores()}
+            while(True):
+                if(task.get_children() is None):
+                    break
+                if(len(task.get_children())==1):
+                    child = task.get_children()[0]
+                    if(len(child.get_parents())==1):
+                        cls_info[child.get_fw_id()] = {'exec_time': child.get_exec_time(), 'cores': child.get_num_cores()}
+                        cluster_c.append(child)
+                        task = child
+                    else:
+                        break
+                else:
+                    break
+            if(len(cls_info)>1):
+                # print(cls_info)
+                sequential_id = []
+                cluster = Node(fw_id=m_task.get_fw_id(), level=level,
+                               fw_info={'exec_time': get_sum_0f_exec_time(cluster_c),
+                                        'cores': cls_info[task.get_fw_id()]['cores']},
+                               parents=[], children=[], assigned=False)
+                cluster.set_cluster_info(cls_info)
+                for cls in cluster_c:
+                    sequential_id.append(cls.get_fw_id())
+                cluster.set_sequential_ids(sequential_id)
+                if not m_task.get_parents() is None:
+                    for parent in m_task.get_parents():
+                        cluster.add_parent(parent)
+                if not cluster_c[-1].get_children() is None:
+                    for child in cluster_c[-1].get_children():
+                        child.remove_parent(cluster_c[-1].get_fw_id())
+                        child.add_parent(cluster)
+                        cluster.add_child(child)
+                for tsk in cluster_c:
+                    workflow.delete_node(tsk.get_fw_id())
+                workflow.add_node(m_task.get_fw_id(), cluster)
+                workflow.update_links()
+    return workflow
+
+new_wf = cluster_vertically(workflow=sf_dag)
+clstured = wpa_clustering(new_wf)
+print (clstured)
 
